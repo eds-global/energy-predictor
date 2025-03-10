@@ -3,6 +3,7 @@ import pandas as pd
 import pickle
 import numpy as np
 import pdfkit
+import bz2
 from fpdf import FPDF
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -11,10 +12,7 @@ import matplotlib.pyplot as plt
 
 st.set_page_config(
     page_title="Building Energy Predictor",
-    page_icon="🏙️",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+    page_icon="🏙️", layout="wide", initial_sidebar_state="collapsed")
 
 # Custom CSS for colors and layout
 st.markdown("""
@@ -27,11 +25,11 @@ st.markdown("""
             align-items: center;
             justify-content: center;
             gap: 15px;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             font-weight: bold;
         }
         .main-title span {
-            font-size: 48px;
+            font-size: 38px;
             font-weight: bold;
             background: linear-gradient(45deg, #FF0000, #FF4500, #FF8C00); /* RED-ORANGE gradient */
             -webkit-background-clip: text;
@@ -78,86 +76,81 @@ col_logo, col_title = st.columns([0.85, 0.15])
 with col_logo:
     st.markdown(
         """
+        <style>
+            .main-title {
+                font-size: 0px;  /* Adjust the size as needed */
+                font-weight: bold;
+            }
+        </style>
         <div class="main-title">
             <span>Building Energy Predictor</span>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+        </div>""", unsafe_allow_html=True)
 with col_title:
     st.image("images/EDSlogo.jpg", width=100)
 
 # Divide into 65% and 35% columns
-col1, col2 = st.columns([0.65, 0.35])
+colA, colB = st.columns([0.65, 0.35])
 
 # ---------------- LEFT COLUMN (Inputs) ----------------
-with col1:
+with colA:
     st.markdown('<div class="section-header"> Building Inputs</div>', unsafe_allow_html=True)
 
-    colA, colB, colAA, colAAA = st.columns(4)
-    with colA:
+    # --- FIRST ROW: Location, Typology, Orientation ---
+    col1, col2, col3 = st.columns([1, 1, 1])
+
+    with col1:
         location_climate_map = {
-            "Mumbai": "Warm & Humid",
-            "Delhi": "Composite",
-            "Bangalore": "Temperate",
-            "Hyderabad": "Composite",
-            "Chennai": "Warm & Humid",
-            "Kolkata": "Warm & Humid",
-            "Ahmedabad": "Hot & Dry",
-            "Pune": "Composite",
-            "Jaisalmer": "Hot & Dry",
+            "Mumbai": "Warm & Humid", "Delhi": "Composite", "Bangalore": "Temperate",
+            "Hyderabad": "Composite", "Chennai": "Warm & Humid", "Kolkata": "Warm & Humid",
+            "Ahmedabad": "Hot & Dry", "Pune": "Composite", "Jaisalmer": "Hot & Dry",
             "Srinagar": "Cold"
         }
         location = st.selectbox("Location", list(location_climate_map.keys()))
-        climate = location_climate_map.get(location, "Unknown")
-    with colB:
-        with st.container():  # or colB if you are using columns
-            allowed_typology = "Business"
-            
-            building_typology = st.selectbox(
-                "Building Typology",
-                ["Business", "Residential", "Hospital", "Retail", "Hotel", "Education"],
-                index=0  # Set default to "Office"
-            )
-            
-            if building_typology != allowed_typology:
-                st.warning("Only 'Business' is allowed. Resetting selection to 'Business'.")
-                st.session_state['building_typology'] = allowed_typology
-            building_typology = st.session_state.get('building_typology', allowed_typology)
+        climate = location_climate_map[location]
+        st.markdown(f"**Climate:** {climate}", unsafe_allow_html=True)
 
-    with colAA:
-        orient = st.selectbox(" Orientation (degrees)", ["0", "45", "90", "135", "180", "225", "270", "315"])
-    with colAAA:
-        st.write("\n")
-        st.info("Climate: "+climate)
-    
-    colC, colD, colCC, colDD = st.columns(4)
-    with colC:
-        total_builtup_area = st.number_input(
-            "Total Built-Up Area (m²)", min_value=100.000, value=1000.000, format="%.0f")
-    with colD:
-        above_grade_percentage = st.number_input(
-            "% Above Grade Area", min_value=0.0, max_value=100.0, value=50.0, format="%.0f")
+    with col2:
+        building_typology = st.selectbox(
+            "Building Typology",
+            ["Business", "Residential", "Hospital", "Retail", "Hotel", "Education"],
+            index=0
+        )
+
+    with col3:
+        orient = st.selectbox("Orientation (degrees)", ["0", "45", "90", "135", "180", "225", "270", "315"])
+
+    st.divider()
+
+    # --- SECOND ROW: Built-Up Areas ---
+    col4, col5, col6 = st.columns([1, 1, 1])
+
+    with col4:
+        total_builtup_area = st.number_input("Total Built-Up Area (m²)", min_value=100.0, value=1000.0, format="%.0f")
+
+    with col5:
+        above_grade_percentage = st.slider("Above Grade Area (%)", min_value=0, max_value=100, value=50)
         above_grade_area = (above_grade_percentage / 100) * total_builtup_area
-        below_grade_area = float(total_builtup_area - above_grade_area)
-    with colCC:
-        st.write("\n")
-        st.info(f"BG Area (m²): {below_grade_area:.0f} ")
-    with colDD:
-        cond_area_percentage = st.number_input(
-            "% Conditioned Area", min_value=0.0, max_value=100.0, value=50.0, format="%.0f")
-        cond_area = (cond_area_percentage / 100) * above_grade_area
-        uncond_area = float(total_builtup_area - cond_area)
+        below_grade_area = total_builtup_area - above_grade_area
 
-    colEE, colAB, coldf = st.columns(3)
-    with colEE:
-        roof_area = st.number_input(" Roof Area (m²)", min_value=100.000, value=1000.000, format="%.0f")
-    with colAB:
-        wall_tot_ag_area = st.number_input(" Total-AG-Ext-Wall-Area(m²)", min_value=100.000, value=1000.000, format="%.0f")
-    with coldf:
-        st.write("\n")
-        st.info(f"Uncond Area (m²): {uncond_area:.0f} ")
-   
+    with col6:
+        st.markdown(f"**Above Grade Area (m²):** {above_grade_area:.0f}", unsafe_allow_html=True)  
+        st.markdown(f"**Below Grade Area (m²):** {below_grade_area:.0f}", unsafe_allow_html=True)
+
+    st.divider()
+
+    # --- THIRD ROW: Conditioned & Roof Areas ---
+    col7, col8, col9 = st.columns([1, 1, 1])
+    with col7:
+        wall_tot_ag_area = st.number_input("Total Above-Grade Exterior Wall Area (m²)", min_value=100.0, value=1000.0, format="%.0f")
+    with col8:
+        roof_area = st.number_input("Roof Area (m²)", min_value=100.0, value=1000.0, format="%.0f")
+    with col9:
+        cond_area_percentage = st.slider("Conditioned Area (%)", min_value=0, max_value=100, value=50)
+        cond_area = (cond_area_percentage / 100) * above_grade_area
+        uncond_area = total_builtup_area - cond_area
+        st.markdown(f"**Conditioned Area (m²):** {cond_area:.0f}", unsafe_allow_html=True)  
+        st.markdown(f"**Unconditioned Area (m²):** {uncond_area:.0f}", unsafe_allow_html=True)
+
     # Envelope Characteristics
     st.markdown('<div class="section-header">Envelope Characteristics</div>', unsafe_allow_html=True)
 
@@ -172,7 +165,7 @@ with col1:
     with colH:
         window_u_value = st.number_input(" Window U-Value(W/m².K)", min_value=0.000, value=1.599, max_value=6.000, format="%.2f")
     with colhh:
-        undergrndWall_u_value = st.number_input("Undr Wall U-Value(W/m².K)", min_value=0.000, value=1.599, max_value=3.000, format="%.2f")
+        undergrndWall_u_value = st.number_input("Underground Wall U-Value(W/m².K)", min_value=0.000, value=1.599, max_value=3.000, format="%.2f")
 
     # Internal Loads
     st.markdown('<div class="section-header"> Internal Loads</div>', unsafe_allow_html=True)
@@ -194,7 +187,7 @@ with col1:
 
 # ---------------- RIGHT COLUMN (Outputs) ----------------
 # Load the trained model, scaler, and preprocessor
-with open('database/energy_prediction_model.pkl', 'rb') as file:
+with bz2.BZ2File('energy_prediction_model.pbz2', 'rb') as file:
     data = pickle.load(file)
     model = data['model']
     scaler = data['scaler']
@@ -208,7 +201,7 @@ def preprocess_input(data, scaler, preprocessor):
     return pd.DataFrame(encoded_data, columns=list(onehot_columns) + list(data.drop(columns=categorical_features).columns))
 
 # Prediction Section
-with col2:
+with colB:
     st.markdown('<div class="section-header" style="font-size: 22px; font-weight: bold; color: red; margin-bottom: 20px;">🔎 Predicted Outputs</div>', unsafe_allow_html=True)
     if predict_button:
         user_df = pd.DataFrame([{
@@ -312,97 +305,3 @@ with col2:
 # Footer
 st.markdown("---")
 st.markdown('<div class="footer">👨‍💻 Developed as part of Machine Learning Energy Modeling Application | © 2025</div>', unsafe_allow_html=True)
-
-# @st.cache_data
-# def load_data():
-#     df = pd.read_excel("database/NewNormalized_DB.xlsx")
-#     return df
-
-# df = load_data()
-
-# # Filter Business Typology
-# business_df = df[df['ProjectTypology'] == 'Business'].drop(columns=['Climate', 'ProjectTypology'])
-# business_df1 = df[df['ProjectTypology'] == 'Business'].drop(columns=['ProjectTypology'])
-
-# # Statistical Summary Table
-# def get_summary_statistics(df):
-#     summary = pd.DataFrame({
-#         'Min': df.min(),
-#         'Max': df.max(),
-#         'Mean': df.mean(),
-#         'Median': df.median()
-#     }).reset_index()
-#     summary.columns = ['Parameter', 'Min', 'Max', 'Mean', 'Median']
-#     return summary
-
-# summary_stats = get_summary_statistics(business_df)
-
-# st.markdown("##### Full Statistical Summary - Business Typology")
-# st.dataframe(summary_stats, hide_index=True, use_container_width=True)
-
-# # Outlier Detection
-# def detect_outliers(df):
-#     outlier_summary = []
-#     for col in df.columns:
-#         Q1 = df[col].quantile(0.25)
-#         Q3 = df[col].quantile(0.75)
-#         IQR = Q3 - Q1
-#         lower = Q1 - 1.5 * IQR
-#         upper = Q3 + 1.5 * IQR
-#         outliers = ((df[col] < lower) | (df[col] > upper)).sum()
-#         outlier_summary.append([col, outliers])
-#     return pd.DataFrame(outlier_summary, columns=['Column', 'Outliers'])
-
-# outlier_df = detect_outliers(business_df)
-
-# with st.expander("🚨 Outlier Detection Report"):
-#     st.dataframe(outlier_df, hide_index=True)
-
-# # Climate Filter
-# climates = df['Climate'].unique()
-# selected_climates = st.multiselect("🌎 Filter by Climate", climates, default=climates)
-
-# filtered_df = df[(df['Climate'].isin(selected_climates)) & (df['ProjectTypology'] == 'Business')]
-
-# st.markdown(f"##### 🔍 Filtered Data - {len(filtered_df)} Projects Selected")
-# st.dataframe(filtered_df)
-
-# # Ensure `Climate` column exists (business_df1 still has Climate)
-# climate_col = [col for col in business_df1.columns if col.lower() == 'climate']
-# if climate_col:
-#     climate_col = climate_col[0]
-# else:
-#     st.error("No 'Climate' column found in dataset!")
-#     st.stop()
-
-# # Numeric Columns (excluding Climate itself)
-# numeric_columns = business_df1.select_dtypes(include=['number']).columns.tolist()
-
-# # Energy Outcome column check
-# energy_column = 'Energy_Outcome(KWH/SQFT)'
-# if energy_column not in business_df1.columns:
-#     st.error(f"'{energy_column}' column is missing from the dataset!")
-#     st.stop()
-
-# # Visualizations
-# st.markdown("##### 📊 Data Visualizations - Business Typology")
-
-# for col in numeric_columns:
-#     if col == energy_column:
-#         continue  # Skip plotting Energy Outcome against itself
-
-#     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-
-#     # Histogram with Climate Hue
-#     sns.histplot(data=business_df1, x=col, hue=climate_col, kde=True, ax=axes[0], palette="Set2")
-#     # axes[0].set_title(f'Histogram of {col} with Climate')
-
-#     # Boxplot by Climate
-#     sns.boxplot(data=business_df1, x=climate_col, y=col, ax=axes[1], palette="Set2")
-#     # axes[1].set_title(f'Boxplot of {col} by Climate')
-
-#     # Scatter plot vs Energy Outcome
-#     sns.scatterplot(data=business_df1, x=col, y=energy_column, hue=climate_col, ax=axes[2], palette="Set2")
-#     # axes[2].set_title(f'Scatter plot of {col} vs {energy_column} (Colored by Climate)')
-
-#     st.pyplot(fig)

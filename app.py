@@ -23,7 +23,7 @@ def landing_page():
                 margin-bottom: 30px;
             }
             .main-title {
-                font-size: 58px;
+                font-size: 38px;
                 font-weight: bold;
                 color: #d72638;
                 margin: 0;
@@ -135,7 +135,7 @@ def landing_page():
         }
     </style>
     <div class="hero-container">
-        <h1 class="main-title">Building Energy Prediction</h1>
+        <h1 class="main-title">Building Energy Predictor</h1>
         <p class="sub-title">Smart Energy Insights for Smarter Decisions</p>
         <p>This application helps you predict the <b>Energy Performance</b> of a building based on inputs such as location,
          building typology, envelope characteristics, and internal loads.</p>
